@@ -38,15 +38,16 @@ class Admin(commands.Cog):
     async def on_member_join(self, mem: discord.Member):
         member_info = await self.members.find_one({"_id": mem.id})
 
-        if not member_info:
-            return
+        if member_info:
+            logs = member_info.get("logs")
 
-        logs = member_info.get("logs")
+            if logs:
+                if any(LogEntryEnum[log["action"]] in [LogEntryEnum.BAN, LogEntryEnum.KICK] for log in logs):
+                    await self.bot.alert_mods(
+                        f"{mem.mention} joined the server. They have previously been kicked or banned.")
 
-        if logs:
-            if any(LogEntryEnum[log["action"]] in [LogEntryEnum.BAN, LogEntryEnum.KICK] for log in logs):
-                await self.bot.alert_mods(
-                    f"{mem.mention} joined the server. They have previously been kicked or banned.")
+        if mem.name[-4:].isnumeric():
+            await self.bot.alert_mods(f"Possible spam account {mem.mention} joined the server.")
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
@@ -103,7 +104,7 @@ class Admin(commands.Cog):
             return
 
         await self.guild.ban(member, reason=reason)
-        await self.log_member_event(LogEntryEnum.BAN.name, intr.user, member, reason, True)
+        await self.log_member_event(LogEntryEnum.BAN.name, intr.user.id, member, reason, True)
         await self.bot.alert_mods(f"{intr.user.mention} has banned {member.mention}. (Reason: {reason})")
 
     @commands.command(name="sync")
@@ -112,6 +113,20 @@ class Admin(commands.Cog):
             return
         await self.bot.sync_and_update()
         await ctx.message.add_reaction("✅")
+
+    @app_commands.command(name="changestatus")
+    async def changestatus(self, intr: discord.Interaction, activity_type: discord.ActivityType, status: str):
+        role_id = await self.bot.get_setting("admin_role_id")
+
+        if not await self.validate(intr, role_id):
+            return
+
+        await self.bot.update_setting({"_id": "activitytype", "value": activity_type})
+        await self.bot.update_setting({"_id": "activitystatus", "value": status})
+        activity = discord.Activity(type=activity_type, detail="", name=status)
+
+        await self.bot.change_presence(activity=activity)
+        await intr.response.send_message("Done", ephemeral=True)
 
     @app_commands.command(name="reloadsettings")
     async def reload_settings(self, intr: discord.Interaction):

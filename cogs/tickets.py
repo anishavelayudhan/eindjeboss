@@ -34,11 +34,6 @@ class Ticket(commands.GroupCog):
 
     def __init__(self, bot: Eindjeboss):
         self.bot = bot
-        self.ctx_menu = app_commands.ContextMenu(
-            name="Report Message",
-            callback=self.report_message,
-        )
-        self.bot.tree.add_command(self.ctx_menu)
         self.tickets = self.bot.dbmanager.get_collection("tickets")
         self.tracked_tickets = {}
 
@@ -47,10 +42,6 @@ class Ticket(commands.GroupCog):
         lg.info(f"[{__name__}] Cog is ready")
         await self.load_open_ticket_info()
         crontab(SYNC_TICKET_DT, func=self.sync_tickets, start=True)
-
-    async def report_message(self, intr: discord.Interaction, msg: discord.Message):
-        await intr.response.send_modal(TicketModal(self.tickets, self.bot, msg))
-        lg.info("Sent ticket modal to %s for message %s", intr.user.display_name, msg.jump_url)
 
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message):
@@ -104,11 +95,6 @@ class Ticket(commands.GroupCog):
         ticket["messages"][old_msg_idx] = old_msg
 
         self.tracked_tickets[msg.channel.id] = [True, ticket]
-
-    @app_commands.command(name="modmail")
-    async def modmail(self, intr: discord.Interaction):
-        await intr.response.send_modal(TicketModal(self.tickets, self.bot))
-        lg.info("Sent ticket modal to %s", intr.user.display_name)
 
     @app_commands.command(name="pending")
     async def opentickets(self, intr: discord.Interaction):
@@ -477,8 +463,7 @@ class TicketModal(Modal):
                             max_length=1024)
 
     async def on_submit(self, intr: discord.Interaction):
-        ticket_channel_id = await self.bot.get_setting(
-            "modmail_channel", None)
+        ticket_channel_id = await self.bot.get_setting("modmail_channel", None)
         ticket_id = str(uuid.uuid1())[:5]
 
         tick_type = "report" if self.message else "ticket"
@@ -503,7 +488,7 @@ class TicketModal(Modal):
             embed.add_field(name="Reference", value=msg_url)
 
         self.collection.insert_one(data)
-        await intr.response.send_message("Ticket submitted.", ephemeral=True)
+        await intr.response.send_message("Thank you for the report. We will reach out to you soon!", ephemeral=True)
 
         channel = await intr.guild.fetch_channel(ticket_channel_id)
         await channel.send(content=msg, embed=embed)
@@ -541,10 +526,8 @@ class TicketStatus(Enum):
 
 
 def make_overwrites(guild: discord.Guild, user: discord.Member, roles):
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        user: discord.PermissionOverwrite(read_messages=True),
-    }
+    overwrites = {guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                  user: discord.PermissionOverwrite(read_messages=True)}
     for role in roles:
         overwrites[role] = discord.PermissionOverwrite(read_messages=True)
     return overwrites
